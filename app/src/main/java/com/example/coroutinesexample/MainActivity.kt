@@ -3,52 +3,72 @@ package com.example.coroutinesexample
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
-import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.Dispatchers.Main
-import kotlin.random.Random
+import kotlinx.coroutines.Dispatchers.IO
 
 class MainActivity : AppCompatActivity() {
     private val TAG = "Debug"
-    private lateinit var parentJob: Job
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         main()
-        button.setOnClickListener {
-            parentJob.cancel()
-        }
     }
 
-    suspend fun work(i: Int) {
-        delay(3000)
-        println("Work $i done. ${Thread.currentThread().name}")
+    val handler = CoroutineExceptionHandler { coroutineContext, throwable ->
+        println("Exception throw in one of the children: $throwable")
     }
 
-    private fun main() {
-        val startTime = System.currentTimeMillis()
-        println("Starting parent job...")
-        parentJob = CoroutineScope(Main).launch {
-            GlobalScope.launch {
-                work(1)
+    fun main() {
+        val parentJob = CoroutineScope(IO).launch(handler) {
+            // --- JOB A ---
+            val jobA = launch {
+                val resultA = getResult(1)
+                println("resultA: $resultA")
             }
-            GlobalScope.launch {
-                work(2)
+            jobA.invokeOnCompletion {
+                if (it != null) {
+                    println("Error getting resultA: $it")
+                }
             }
-            parentJob.invokeOnCompletion { throwable ->
-                if (throwable != null) {
-                    println("Job was cancelled after ${System.currentTimeMillis() - startTime} ms")
-                } else {
-                    println("Done in ${System.currentTimeMillis() - startTime} ms")
+            // --- JOB B ---
+            val jobB = launch {
+                val resultB = getResult(2)
+                println("resultB: $resultB")
+            }
+            jobB.invokeOnCompletion {
+                if (it != null) {
+                    println("Error getting resultB: $it")
+                }
+            }
+            // --- JOB C ---
+            val jobC = launch {
+                val resultC = getResult(3)
+                println("resultC: $resultC")
+            }
+            jobC.invokeOnCompletion {
+                if (it != null) {
+                    println("Error getting resultC: $it")
                 }
             }
         }
+        parentJob.invokeOnCompletion {
+            if (it != null) {
+                println("Parent Job failed: $it")
+            } else {
+                println("Parent Job SUCCESS")
+            }
+        }
     }
 
-    private suspend fun getResult(): Int {
-        delay(1000)
-        return Random.nextInt(0, 99)
+    suspend fun getResult(number: Int): Int {
+        delay(number * 500L)
+        if (number == 2) {
+            //throw Exception("Error getting result for number $number")
+            //cancel(CancellationException("Error getting result for number: $number"))
+            throw CancellationException("Error getting result for number: $number")
+        }
+        return number * 2
     }
 
     private fun println(message: String) {
