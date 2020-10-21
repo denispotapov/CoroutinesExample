@@ -1,77 +1,67 @@
 package com.example.coroutinesexample
 
 import android.os.Bundle
+import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
-import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.Dispatchers.Main
 
 class MainActivity : AppCompatActivity() {
-
-    private val RESULT_1 = "Result #1"
-    private val RESULT_2 = "Result #2"
-    private val JOB_TIMEOUT = 2100L
-
+    private val TAG = "Debug"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        main()
+    }
 
-        button.setOnClickListener {
-            setNewText("Click")
-            CoroutineScope(IO).launch {
-                fakeApiRequest()
+    private val handler = CoroutineExceptionHandler { coroutineContext, throwable ->
+        println("Exception throw in one of the children: $throwable")
+    }
+
+    private fun main() {
+        val parentJob = CoroutineScope(IO).launch(handler) {
+
+            supervisorScope {
+                // --- JOB A ---
+                val jobA = launch {
+                    val resultA = getResult(1)
+                    println("resultA: $resultA")
+                }
+
+                // --- JOB B ---
+                val jobB = launch {
+                    val resultB = getResult(2)
+                    println("resultB: $resultB")
+                }
+                // --- JOB C ---
+                val jobC = launch {
+                    val resultC = getResult(3)
+                    println("resultC: $resultC")
+                }
             }
 
         }
-    }
-
-    private suspend fun fakeApiRequest() {
-        withContext(IO) {
-            val job = withTimeoutOrNull(JOB_TIMEOUT) {
-                val result1 = getResultFromApi() // wait
-                setTextOnMainThread("Got $result1")
-
-                val result2 = getResult2FromApi() // wait
-                setTextOnMainThread("Got $result2")
-            }
-
-            if (job == null) {
-                val cancelMessage = "Cancelling job...Job took longer than $JOB_TIMEOUT ms"
-                println("debug: $cancelMessage")
-                setTextOnMainThread(cancelMessage)
-
+        parentJob.invokeOnCompletion {
+            if (it != null) {
+                println("Parent Job failed: $it")
+            } else {
+                println("Parent Job SUCCESS")
             }
         }
     }
 
-    private fun setNewText(input: String) {
-        val newText = text.text.toString() + "\n$input"
-        text.text = newText
-    }
-
-    private suspend fun setTextOnMainThread(input: String) {
-        withContext(Main) {
-            setNewText(input)
+    private suspend fun getResult(number: Int): Int {
+        delay(number * 500L)
+        if (number == 2) {
+            throw Exception("Error getting result for number $number")
+            //cancel(CancellationException("Error getting result for number: $number"))
+            //throw CancellationException("Error getting result for number: $number")
         }
+        return number * 2
     }
 
-
-    private suspend fun getResultFromApi(): String {
-        logThread("getResultFromApi")
-        delay(1000)
-        return RESULT_1
-    }
-
-    private suspend fun getResult2FromApi(): String {
-        logThread("getResult2FromApi")
-        delay(1000)
-        return RESULT_2
-
-    }
-
-    private fun logThread(methodName: String) {
-        println("debug $methodName: ${Thread.currentThread().name}")
+    private fun println(message: String) {
+        Log.d(TAG, message)
     }
 }
